@@ -38,23 +38,75 @@ if ($Zip) {
 }
 Say "source: $root"
 
-# ---------- 2. python ----------
-$pyExe = (Get-Command python -ErrorAction SilentlyContinue).Source
+# ---------- 2. python (install it automatically if missing) ----------
+function Find-Python {
+  $p = (Get-Command python -ErrorAction SilentlyContinue).Source
+  if ($p -and $p -notmatch 'WindowsApps') { return $p }
+  foreach ($v in @('313','312','311','310')) {
+    $c = "$env:LOCALAPPDATA\Programs\Python\Python$v\python.exe"
+    if (Test-Path $c) { return $c }
+  }
+  return $null
+}
+
+$pyExe = Find-Python
+
 if (-not $pyExe) {
-  foreach ($c in @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
-                   "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
-                   "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe")) {
-    if (Test-Path $c) { $pyExe = $c; break }
+  Write-Host "  python not found - installing it for you" -ForegroundColor Yellow
+  Say "this takes a few minutes the first time"
+
+  $installed = $false
+
+  # a) winget (built into Windows 11 and most Windows 10 machines)
+  $wg = (Get-Command winget -ErrorAction SilentlyContinue).Source
+  if ($wg) {
+    Say "trying winget..."
+    & $wg install -e --id Python.Python.3.12 --accept-source-agreements `
+        --accept-package-agreements --silent --scope user 2>&1 | Out-Null
+    Start-Sleep -Seconds 3
+    $pyExe = Find-Python
+    if ($pyExe) { $installed = $true; Say "python installed via winget" }
+  }
+
+  # b) fall back to the official python.org installer, fully silent
+  if (-not $installed) {
+    Say "falling back to the official installer from python.org"
+    $ver = '3.12.10'
+    $url = "https://www.python.org/ftp/python/$ver/python-$ver-amd64.exe"
+    $exe = Join-Path $env:TEMP "python-$ver-amd64.exe"
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+      Start-Process -FilePath $exe -Wait -ArgumentList `
+        '/quiet','InstallAllUsers=0','PrependPath=1','Include_pip=1',
+        'Include_test=0','Include_launcher=1','Include_doc=0','Include_tcltk=1'
+      Start-Sleep -Seconds 3
+      $pyExe = Find-Python
+      if ($pyExe) { $installed = $true; Say "python installed from python.org" }
+    } catch {
+      Write-Host "  ! automatic install failed: $_" -ForegroundColor Red
+    }
+  }
+
+  if (-not $installed -or -not $pyExe) {
+    Write-Host ""
+    Write-Host "  Could not install Python automatically." -ForegroundColor Red
+    Write-Host "  Install it by hand from https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "  (tick 'Add python.exe to PATH' during setup), then run this again." -ForegroundColor Yellow
+    return
   }
 }
-if (-not $pyExe) {
-  Write-Host "  ! Python 3 not found." -ForegroundColor Yellow
-  Write-Host "    install it from https://python.org (tick 'Add python to PATH'), then re-run this." -ForegroundColor Yellow
-  return
-}
+
 Say "python: $pyExe"
+
+# make sure pip + the two libraries are present
 Say "installing python packages (requests, pillow)..."
-& $pyExe -m pip install --quiet --disable-pip-version-check requests pillow
+& $pyExe -m ensurepip --upgrade 2>&1 | Out-Null
+& $pyExe -m pip install --quiet --upgrade pip 2>&1 | Out-Null
+& $pyExe -m pip install --quiet --disable-pip-version-check requests pillow 2>&1 | Out-Null
+& $pyExe -c "import requests, PIL" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "  ! python packages failed to install - check your internet connection" -ForegroundColor Yellow
+}
 
 # ---------- 3. flatten into the install dir ----------
 New-Item -ItemType Directory -Path $Dir -Force | Out-Null

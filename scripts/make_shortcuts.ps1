@@ -11,7 +11,8 @@ $cmd  = "$env:SystemRoot\System32\cmd.exe"
 # find python
 $pyExe = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $pyExe) {
-  foreach ($c in @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+  foreach ($c in @("$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
+                   "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
                    "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
                    "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe")) {
     if (Test-Path $c) { $pyExe = $c; break }

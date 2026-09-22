@@ -153,7 +153,10 @@ single working folder, because the programs reference each other by name.
 ## Requirements
 
 - Windows 10 or 11
-- Python 3.10+ (`requests`, `pillow` — installed automatically)
+
+That is all. If Python is missing the installer adds it for you (via winget,
+falling back to the official python.org installer), then installs the
+`requests` and `pillow` packages itself.
 
 ## Licence
 

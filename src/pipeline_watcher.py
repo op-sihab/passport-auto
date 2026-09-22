@@ -248,6 +248,14 @@ Return ONLY a JSON object (no markdown, no other text) in the {pw}x{ph} coordina
     try:
         import numpy as _np
         _arr = _np.array(img)
+        # normalise to 3 channels — RGBA/LA/grayscale input otherwise breaks the
+        # reshape below ("cannot reshape array of size N into shape (3)")
+        if _arr.ndim == 2:
+            _arr = _np.stack([_arr] * 3, axis=-1)
+        elif _arr.ndim == 3 and _arr.shape[2] > 3:
+            _arr = _arr[:, :, :3]
+        elif _arr.ndim == 3 and _arr.shape[2] == 1:
+            _arr = _np.repeat(_arr, 3, axis=2)
         _h, _w = _arr.shape[:2]
         _corners = _np.concatenate([_arr[:50, :50].reshape(-1, 3), _arr[:50, -50:].reshape(-1, 3),
                                     _arr[-50:, :50].reshape(-1, 3), _arr[-50:, -50:].reshape(-1, 3)])
@@ -307,11 +315,38 @@ GPT_STUDIO_PROMPT = (
 )
 
 
-def step2_gpt_edit(cropped_path: str) -> bytes:
-    """Enhance cropped image via gpt-image-2 (cun.ai). Returns png bytes.
+def _extract_edit_image(j) -> bytes:
+    """Pull the generated image out of an edits response.
 
-    The API occasionally returns 200 with a body that has no usable b64_json
-    (transient/moderation shape). Retry a couple of times before giving up.
+    Accepts b64_json (the usual shape) or url (some deployments return that).
+    Returns b'' when the body carries no usable image.
+    """
+    try:
+        item = j["data"][0]
+    except Exception:
+        return b""
+    b64 = item.get("b64_json")
+    if b64:
+        try:
+            return base64.b64decode(b64)
+        except Exception:
+            return b""
+    url = item.get("url")
+    if url:
+        try:
+            rr = requests.get(url, timeout=120)
+            if rr.status_code == 200 and rr.content:
+                return rr.content
+        except Exception:
+            return b""
+    return b""
+
+
+def step2_gpt_edit(cropped_path: str) -> bytes:
+    """Enhance cropped image via gpt-image-2 (cun.ai). Returns image bytes.
+
+    The API occasionally returns a 200 whose body carries no image (transient
+    error / moderation shape), so retry a couple of times before giving up.
     """
     with Image.open(cropped_path) as img:
         buf = io.BytesIO()
@@ -322,30 +357,42 @@ def step2_gpt_edit(cropped_path: str) -> bytes:
     t_start = time.time()
     for attempt in range(3):
         t_a = time.time()
-        r = requests.post(GPT_IMG_URL,
-            headers={"Authorization": f"Bearer {GPT_IMG_KEY}"},
-            files={"image": ("photo.png", io.BytesIO(img_bytes), "image/png")},
-            data={"model": GPT_IMG_MODEL, "prompt": GPT_STUDIO_PROMPT},
-            timeout=180)
+        last = ""
+        try:
+            r = requests.post(GPT_IMG_URL,
+                headers={"Authorization": f"Bearer {GPT_IMG_KEY}"},
+                files={"image": ("photo.png", io.BytesIO(img_bytes), "image/png")},
+                data={"model": GPT_IMG_MODEL, "prompt": GPT_STUDIO_PROMPT},
+                timeout=240)
+        except Exception as e:
+            last = f"{e.__class__.__name__}: {e}"
+            print(f"    [EDIT] attempt {attempt+1} connection error after "
+                  f"{time.time()-t_a:.1f}s ({last[:80]}) -> retrying", flush=True)
+            time.sleep(2)
+            continue
         el = time.time() - t_a
         if r.status_code == 200:
             try:
-                b64 = r.json()["data"][0]["b64_json"]
+                img_out = _extract_edit_image(r.json())
+            except Exception as e:
+                img_out = b""
+                last = f"unreadable body ({e.__class__.__name__})"
+            if img_out:
                 if attempt:
                     print(f"    [EDIT] attempt {attempt+1} OK after {el:.1f}s "
                           f"(total {time.time()-t_start:.1f}s)", flush=True)
-                return base64.b64decode(b64)
-            except (KeyError, IndexError, TypeError, ValueError) as e:
-                last = f"bad body ({e.__class__.__name__}): {r.text[:200]}"
-                print(f"    [EDIT] attempt {attempt+1} returned unusable body "
-                      f"after {el:.1f}s -> retrying", flush=True)
+                return img_out
+            if not last:
+                last = f"no image in body: {r.text[:200]}"
+            print(f"    [EDIT] attempt {attempt+1} returned no image after "
+                  f"{el:.1f}s -> retrying | {last[:120]}", flush=True)
         else:
             last = f"HTTP {r.status_code}: {r.text[:200]}"
             print(f"    [EDIT] attempt {attempt+1} HTTP {r.status_code} "
                   f"after {el:.1f}s -> retrying", flush=True)
         if attempt < 2:
             time.sleep(2)
-    raise RuntimeError(f"gpt-image edit failed: {last}")
+    raise RuntimeError(f"image edit failed after 3 attempts: {last}")
 
 
 # ---------------- STEP 2+3 (legacy): Gemini edit via CDP headless bot ----------------
@@ -503,6 +550,12 @@ def step2_gemini_edit(cropped_path: str) -> str:
 def process(raw_path: str):
     name = os.path.splitext(os.path.basename(raw_path))[0]
     t0 = time.time()
+    # the file can vanish between being queued and being picked up (the user
+    # moves it, or a sync client rewrites it) - skip quietly instead of failing
+    if not os.path.exists(raw_path):
+        print(f"\n[PIPE] {os.path.basename(raw_path)}")
+        print(f"    [SKIP] file disappeared before processing")
+        return
     print(f"\n[PIPE] {os.path.basename(raw_path)}")
     try:
         crop_path = step1_crop(raw_path)

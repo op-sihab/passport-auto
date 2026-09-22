@@ -34,7 +34,15 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 ## After installing
 
-Put your API keys in `secrets.json` (created from the example, git-ignored):
+The installer asks for your two API keys straight away and stores them in
+`secrets.json` (git-ignored). You can change them at any time:
+
+```
+pa setup      enter or replace the keys (interactive)
+pa keys       show the keys stored on this machine
+```
+
+`secrets.json` looks like this:
 
 ```json
 {
@@ -43,7 +51,12 @@ Put your API keys in `secrets.json` (created from the example, git-ignored):
 }
 ```
 
-Then start it — double-click **Passport Auto - On**, or run `pa start`.
+| Key | Used for | Where to get it |
+|---|---|---|
+| `fireworks_api_key` | analyses each photo and picks the crop | fireworks.ai → API Keys |
+| `cun_api_key` | redraws the background in studio blue | cun.ai → API keys |
+
+Both are billed per use, so keep them private.
 
 ## Using it
 
@@ -89,6 +102,8 @@ pa start | stop | restart | status | queue
 pa process <file>          run one photo now
 pa set-input <folder>      watch a different folder
 pa settings                show current settings
+pa setup                   enter your API keys (interactive)
+pa keys                    show the keys stored on this machine
 pa log | notify            tail the error log / notification history
 pa test-notify             send a test toast
 ```

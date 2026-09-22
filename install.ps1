@@ -87,14 +87,39 @@ foreach ($s in @('make_shortcuts.ps1','register_appid.ps1')) {
   }
 }
 
-# ---------- 6. start ----------
-$pa = Join-Path $Dir 'pa.py'
-if (Test-Path $pa) { & $pyExe $pa start }
+# ---------- 6. first run: ask for the API keys, then start ----------
+$pa  = Join-Path $Dir 'pa.py'
+$sec = Join-Path $Dir 'secrets.json'
+
+function Test-Keys {
+  if (-not (Test-Path $sec)) { return $false }
+  try {
+    $j = Get-Content $sec -Raw | ConvertFrom-Json
+    foreach ($k in @('fireworks_api_key','cun_api_key')) {
+      $v = $j.$k
+      if (-not $v -or $v -match 'your_') { return $false }
+    }
+    return $true
+  } catch { return $false }
+}
+
+if (Test-Path $pa) {
+  if (-not (Test-Keys)) {
+    Write-Host ""
+    Write-Host "  STEP 1 of 2 - enter your API keys" -ForegroundColor Yellow
+    Write-Host "  (you can redo this later with:  $Dir\pa.cmd setup)" -ForegroundColor DarkGray
+    & $pyExe $pa setup
+  }
+  Write-Host "  STEP 2 of 2 - starting the watcher" -ForegroundColor Yellow
+  & $pyExe $pa start
+}
 
 Write-Host ""
 Write-Host "  DONE" -ForegroundColor Green
 Say "drop photos into  : $Dir\INPUT"
 Say "collect finished  : $Dir\FINAL"
 Say "control panel     : double-click 'Passport Auto TUI.cmd'"
-Say "windows shortcuts : '1 - Drop Photo Here' / '2 - Get Finished Photos' / '3 - Status'"
+Say "desktop shortcuts : '1 - Drop Photo Here' / '2 - Get Finished Photos' / '3 - Status'"
+Write-Host ""
+Write-Host "  It starts automatically every time Windows starts." -ForegroundColor DarkGray
 Write-Host ""

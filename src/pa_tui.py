@@ -68,7 +68,20 @@ def banner():
     print(f"{C['grey']}  watch : {s['input_folder']}{C['reset']}")
     print(f"{C['grey']}  queue : {count_images(s['input_folder'])} waiting"
           f"   done : {count_images(os.path.join(BASE,'FINAL'))} finished{C['reset']}")
+    if not keys_present():
+        print(f"{C['yellow']}  ! API keys are not set - press k to enter them{C['reset']}")
     print()
+
+
+def keys_present():
+    import json
+    try:
+        with open(os.path.join(BASE, "secrets.json"), encoding="utf-8") as f:
+            d = json.load(f)
+        return all(v.strip() and "your_" not in v
+                   for v in (d.get("fireworks_api_key", ""), d.get("cun_api_key", "")))
+    except Exception:
+        return False
 
 
 MENU = [
@@ -78,9 +91,10 @@ MENU = [
     ("4", "Open DROP folder (put photos here)", "open_input"),
     ("5", "Open FINISHED folder (get photos here)", "open_final"),
     ("6", "Change watch folder", "set_input"),
-    ("7", "Send test notification", "test_notify"),
+    ("7", "Test notification", "test_notify"),
     ("8", "Recent activity", "log"),
     ("9", "Advanced settings", "settings"),
+    ("k", "Enter API keys", "setup"),
     ("0", "Exit", "exit"),
 ]
 
@@ -130,6 +144,10 @@ def do(action):
     elif action == "log":
         print(run_pa("notify", "-n", "12"))
         pause()
+    elif action == "setup":
+        # interactive prompt - run it as its own process so input() works normally
+        subprocess.run([PY, PA, "setup"])
+        pause()
     elif action == "settings":
         print(run_pa("settings"))
         try:
@@ -152,7 +170,7 @@ def main():
         banner()
         draw_menu()
         try:
-            choice = input(f"{C['bold']}  choose > {C['reset']}").strip()
+            choice = input(f"{C['bold']}  choose > {C['reset']}").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

@@ -10,6 +10,8 @@ Usage:
   pa.py queue                 list files waiting in INPUT
   pa.py set-input <folder>    watch a different folder (camera, Downloads, ...)
   pa.py settings              show current settings
+  pa.py setup                 enter your API keys (first-time setup)
+  pa.py keys                  show the keys stored on this machine
   pa.py log [-n N]            tail the error log
   pa.py notify [-n N]         tail the notification history
   pa.py test-notify           send a test toast
@@ -203,6 +205,88 @@ def cmd_settings_cmd():
     return 0
 
 
+SECRETS = os.path.join(BASE, "secrets.json")
+
+
+def _load_secrets():
+    try:
+        with open(SECRETS, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_secrets(d):
+    with open(SECRETS, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+
+
+def keys_ok():
+    s = _load_secrets()
+    return all(s.get(k, "").strip() and "your_" not in s.get(k, "")
+               for k in ("fireworks_api_key", "cun_api_key"))
+
+
+def cmd_keys():
+    """Show the keys stored on this machine (for moving to another PC)."""
+    s = _load_secrets()
+    if not s:
+        print("no secrets.json yet - run:  pa setup")
+        return 1
+    print(f"stored in: {SECRETS}\n")
+    for k in ("fireworks_api_key", "cun_api_key"):
+        v = s.get(k, "")
+        print(f"  {k:<20} {v if v else '(not set)'}")
+    print("\nkeep these private - anyone with them can spend your credits")
+    return 0
+
+
+def cmd_setup():
+    """Interactive first-run setup: ask for the two API keys."""
+    s = _load_secrets()
+    print("")
+    print("  PASSPORT AUTO - first time setup")
+    print("  " + "-" * 33)
+    print("  Two API keys are needed. Press Enter to keep the current value.\n")
+
+    def ask(display, key, where, prefix):
+        cur = s.get(key, "")
+        hint = " (already set)" if cur and "your_" not in cur else " (not set)"
+        print(f"  {display}{hint}")
+        print(f"    where to get it: {where}")
+        try:
+            v = input("    paste key: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            v = ""
+        if v:
+            if prefix and not v.startswith(prefix):
+                print(f"    ! that does not look like a {prefix} key - saved anyway")
+            s[key] = v
+        print("")
+
+    ask("1) Fireworks key  - analyses each photo and picks the crop",
+        "fireworks_api_key", "https://fireworks.ai  ->  API Keys", "fw_")
+    ask("2) cun.ai key     - redraws the background in studio blue",
+        "cun_api_key", "https://cun.ai  ->  API keys", "sk-")
+
+    _save_secrets(s)
+    print(f"  saved to {SECRETS}")
+
+    if keys_ok():
+        print("  both keys look good")
+        was = _running()
+        if was:
+            print("  restarting the watcher to apply them...")
+            cmd_stop()
+            time.sleep(1)
+            cmd_start()
+        else:
+            print("  start it when ready:  pa start")
+    else:
+        print("  ! a key is still missing - the watcher will fail until you add it")
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -232,6 +316,10 @@ def main():
         return cmd_set_input(rest[0])
     if cmd in ("settings", "config"):
         return cmd_settings_cmd()
+    if cmd in ("setup", "keys-setup"):
+        return cmd_setup()
+    if cmd == "keys":
+        return cmd_keys()
     if cmd == "process":
         if not rest:
             print("usage: pa.py process <file>")

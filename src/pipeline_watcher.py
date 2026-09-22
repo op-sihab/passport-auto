@@ -60,7 +60,9 @@ def load_settings():
         with open(SETTINGS, encoding="utf-8") as f:
             loaded = json.load(f)
         if isinstance(loaded, dict):
-            d.update(loaded)
+            for k, v in loaded.items():
+                if v not in (None, "", []):   # blank means "use the default"
+                    d[k] = v
     except Exception:
         pass
     return d

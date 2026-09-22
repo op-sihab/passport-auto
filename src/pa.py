@@ -22,7 +22,9 @@ import sys
 import time
 import json
 
-BASE = os.path.join(os.path.expanduser("~"), "Desktop", "Passport Auto")
+# the working folder is wherever this file lives - never a hard-coded path,
+# otherwise an install into any other folder would break
+BASE = os.path.dirname(os.path.abspath(__file__))
 SETTINGS = os.path.join(BASE, "settings.json")
 
 

@@ -30,7 +30,9 @@ HOME = os.path.expanduser("~")
 GEMINI_DIR = HOME  # C:/Users/scptb/gemini_bot.py
 sys.path.insert(0, GEMINI_DIR)
 
-BASE = os.path.join(HOME, "Desktop", "Passport Auto")
+# the working folder is wherever this file lives, so the program runs correctly
+# no matter which folder it was installed into
+BASE = os.path.dirname(os.path.abspath(__file__))
 DIR_INPUT = os.path.join(BASE, "INPUT")
 DIR_CROP = os.path.join(BASE, "CROPPED")
 DIR_FINAL = os.path.join(BASE, "FINAL")

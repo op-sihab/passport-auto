@@ -23,20 +23,47 @@ Write-Host "  PASSPORT AUTO" -ForegroundColor Cyan
 Write-Host "  -------------" -ForegroundColor DarkGray
 
 # ---------- 1. get the source tree ----------
-if ($Zip) {
+# When this script is piped through iex (irm ...) there is no $PSScriptRoot, so
+# fall back to downloading the repository archive automatically.
+$REPO_ZIP = 'https://github.com/op-sihab/passport-auto/archive/refs/heads/main.zip'
+
+if (-not $Zip) {
+  if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot 'src'))) {
+    $root = $PSScriptRoot
+    Say "source: $root (local)"
+  } else {
+    $Zip = $REPO_ZIP
+  }
+}
+
+if (-not $root) {
   $tmp = Join-Path $env:TEMP ("pa_" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-  Say "downloading payload..."
+  Say "downloading the program..."
   $pkg = Join-Path $tmp "pkg.zip"
-  Invoke-WebRequest -Uri $Zip -OutFile $pkg -UseBasicParsing
-  Expand-Archive -Path $pkg -DestinationPath $tmp -Force
-  $root = Get-ChildItem $tmp -Recurse -Filter 'pipeline_watcher.py' -ErrorAction SilentlyContinue |
-          Select-Object -First 1 | ForEach-Object { Split-Path (Split-Path $_.FullName -Parent) -Parent }
-  if (-not $root) { throw "could not find the payload in the downloaded zip" }
-} else {
-  $root = $PSScriptRoot
+  try {
+    Invoke-WebRequest -Uri $Zip -OutFile $pkg -UseBasicParsing
+  } catch {
+    Write-Host "  ! download failed: $_" -ForegroundColor Red
+    Write-Host "    check your internet connection and run this again." -ForegroundColor Yellow
+    return
+  }
+  try {
+    Expand-Archive -Path $pkg -DestinationPath $tmp -Force
+  } catch {
+    Write-Host "  ! could not unpack the download: $_" -ForegroundColor Red
+    return
+  }
+  $found = Get-ChildItem $tmp -Recurse -Filter 'pipeline_watcher.py' -ErrorAction SilentlyContinue |
+           Select-Object -First 1
+  if ($found) {
+    $root = Split-Path (Split-Path $found.FullName -Parent) -Parent
+  } else {
+    Write-Host "  ! the downloaded package looks wrong (no sources inside)" -ForegroundColor Red
+    return
+  }
+  Say "source: downloaded"
 }
-Say "source: $root"
 
 # ---------- 2. python (install it automatically if missing) ----------
 function Find-Python {

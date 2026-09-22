@@ -1,0 +1,22 @@
+# secrets - NEVER commit
+secrets.json
+
+# runtime state / user data
+INPUT/
+CROPPED/
+FINAL/
+DONE/
+FAILED/
+settings.json
+watcher.pid
+watcher.log
+error.log
+notifications.log
+state.json
+processed.txt
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
